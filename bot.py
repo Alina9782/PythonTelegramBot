@@ -36,8 +36,18 @@ async def process_help_command(message: types.Message):
 
 @dp.message_handler(commands=['create'])
 async def process_create_command(message: types.Message):
-    await message.reply("Створюю запис. \nВаше прізвище?")
+    await message.reply("Створюю запис. \nВаше прізвище? \nМожна відмінити запис на етапі реєстрації комнадою /cancel")
     await Reg.lastname_add.set()
+
+
+@dp.message_handler(state='*', commands='cancel')
+async def cancel_handler(message: types.Message, state: FSMContext):
+    current_state = await state.get_state()
+    if current_state is None:
+        return
+
+    await state.finish()
+    await message.reply('ОК')
 
 
 @dp.message_handler(state=Reg.lastname_add)
