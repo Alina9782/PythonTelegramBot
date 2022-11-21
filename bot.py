@@ -18,6 +18,7 @@ cursor = db.cursor()
 
 
 class Reg(StatesGroup):
+    date_add = State()
     lastname_add = State()
     firstname_add = State()
     phone_add = State()
@@ -36,8 +37,9 @@ async def process_help_command(message: types.Message):
 
 @dp.message_handler(commands=['create'])
 async def process_create_command(message: types.Message):
-    await message.reply("Створюю запис. \nВаше прізвище? \nМожна відмінити запис на етапі реєстрації комнадою /cancel")
-    await Reg.lastname_add.set()
+    await message.reply("Створюю запис. \nСкопіюйте потрібний час з запропонованого і відправте. "
+                        "\n\nМожна відмінити запис на етапі реєстрації комнадою /cancel")
+    await Reg.date_add.set()
 
 
 @dp.message_handler(state='*', commands='cancel')
@@ -48,6 +50,14 @@ async def cancel_handler(message: types.Message, state: FSMContext):
 
     await state.finish()
     await message.reply('ОК')
+
+
+@dp.message_handler(state=Reg.date_add)
+async def process_date_add(message: types.Message, state: FSMContext):
+    async with state.proxy() as data:
+        data['date'] = message.text
+    await message.answer("Внесіть Ваше прізвище.")
+    await Reg.lastname_add.set()
 
 
 @dp.message_handler(state=Reg.lastname_add)
@@ -70,9 +80,9 @@ async def process_firstname_add(message: types.Message, state: FSMContext):
 async def process_phone_add(message: types.Message, state: FSMContext):
     async with state.proxy() as data:
         data['phone'] = message.text
-    cursor.execute(f"UPDATE schedule SET LastName = ('{data['lastname']}') WHERE Time = '01.12 11:00'")
-    cursor.execute(f"UPDATE schedule SET FirstName = ('{data['firstname']}') WHERE Time = '01.12 11:00'")
-    cursor.execute(f"UPDATE schedule SET Phone = ('{data['phone']}') WHERE Time = '01.12 11:00'")
+    cursor.execute(f"UPDATE schedule SET LastName = ('{data['lastname']}') WHERE Time = '{data['date']}'")
+    cursor.execute(f"UPDATE schedule SET FirstName = ('{data['firstname']}') WHERE Time = '{data['date']}'")
+    cursor.execute(f"UPDATE schedule SET Phone = ('{data['phone']}') WHERE Time = '{data['date']}'")
     db.commit()
     await message.answer('Зареєстровано!')
     await state.finish()
