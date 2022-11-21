@@ -1,12 +1,26 @@
 from aiogram import Bot, types
 from aiogram.dispatcher import Dispatcher
 from aiogram.utils import executor
+from aiogram.contrib.fsm_storage.memory import MemoryStorage
+from aiogram.dispatcher import FSMContext
+from aiogram.dispatcher.filters.state import StatesGroup, State
+import sqlite3
 
 from config import TOKEN
 
-
 bot = Bot(token=TOKEN)
-dp = Dispatcher(bot)
+storage = MemoryStorage()
+dp = Dispatcher(bot, storage=storage)
+
+
+db = sqlite3.connect('clinic.db')
+cursor = db.cursor()
+
+
+class Reg(StatesGroup):
+    lastname_add = State()
+    firstname_add = State()
+    phone_add = State()
 
 
 @dp.message_handler(commands=['start'])
@@ -21,8 +35,37 @@ async def process_help_command(message: types.Message):
 
 
 @dp.message_handler(commands=['create'])
-async def process_create_command(msg: types.Message):
-    await msg.reply("Створюю запис. \nВаше прізвище?")
+async def process_create_command(message: types.Message):
+    await message.reply("Створюю запис. \nВаше прізвище?")
+    await Reg.lastname_add.set()
+
+
+@dp.message_handler(state=Reg.lastname_add)
+async def process_lastname_add(message: types.Message, state: FSMContext):
+    async with state.proxy() as data:
+        data['lastname'] = message.text
+    await message.answer("Внесіть Ваше ім'я.")
+    await Reg.firstname_add.set()
+
+
+@dp.message_handler(state=Reg.firstname_add)
+async def process_firstname_add(message: types.Message, state: FSMContext):
+    async with state.proxy() as data:
+        data['firstname'] = message.text
+    await message.answer('Внесіть Ваш номер телефону.')
+    await Reg.phone_add.set()
+
+
+@dp.message_handler(state=Reg.phone_add)
+async def process_phone_add(message: types.Message, state: FSMContext):
+    async with state.proxy() as data:
+        data['phone'] = message.text
+    cursor.execute(f"UPDATE schedule SET LastName = ('{data['lastname']}') WHERE Time = '01.12 11:00'")
+    cursor.execute(f"UPDATE schedule SET FirstName = ('{data['firstname']}') WHERE Time = '01.12 11:00'")
+    cursor.execute(f"UPDATE schedule SET Phone = ('{data['phone']}') WHERE Time = '01.12 11:00'")
+    db.commit()
+    await message.answer('Зареєстровано!')
+    await state.finish()
 
 
 @dp.message_handler()
