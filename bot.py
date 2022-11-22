@@ -3,10 +3,9 @@ from aiogram.dispatcher import Dispatcher
 from aiogram.utils import executor
 from aiogram.contrib.fsm_storage.memory import MemoryStorage
 from aiogram.dispatcher import FSMContext
-from aiogram.dispatcher.filters.state import StatesGroup, State
 import sqlite3
 
-from config import TOKEN
+from config import TOKEN, Reg, GetSchedule
 
 bot = Bot(token=TOKEN)
 storage = MemoryStorage()
@@ -17,22 +16,40 @@ db = sqlite3.connect('clinic.db')
 cursor = db.cursor()
 
 
-class Reg(StatesGroup):
-    date_add = State()
-    lastname_add = State()
-    firstname_add = State()
-    phone_add = State()
-
-
 @dp.message_handler(commands=['start'])
 async def process_start_command(message: types.Message):
-    await message.reply("Вітаю в чат-боті для запису на прийом в DermaClinic! "
+    await message.reply("Вітаю в боті для запису на прийом в DermaClinic! "
                         "\nДля перегляду команд, напиши /help")
 
 
 @dp.message_handler(commands=['help'])
 async def process_help_command(message: types.Message):
-    await message.reply("Команди, які я знаю: \n/create - для створення запису;")
+    await message.reply("Команди, які я знаю: \n/schedule - для перегляду вільного часу; "
+                        "\n/create - для створення запису; \n/contacts - Контакти DermaClinic.")
+
+
+@dp.message_handler(commands=['contacts'])
+async def process_contacts_command(message: types.Message):
+    await message.reply("Наші контакти: \nТел: +380666644422; \nм. Дніпро, вул. Володимира Мономаха, 6а.")
+
+
+@dp.message_handler(commands=['schedule'])
+async def process_schedule_command(message: types.Message):
+    await message.reply("Для того, щоб дізнатись вільні години внесіть день, який Вас цікавить в форматі ДД.ММ")
+    await GetSchedule.date_add.set()
+
+
+@dp.message_handler(state=GetSchedule.date_add)
+async def process_get_schedule_command(message: types.Message, state: FSMContext):
+    async with state.proxy() as data:
+        data['date'] = message.text
+    cursor.execute(f"SELECT Time FROM schedule WHERE (Date = '{data['date']}') AND (Phone IS NULL);")
+    all_results = cursor.fetchall()
+    await message.answer("Час, доступний для запису:")
+    for el in all_results:
+        await message.reply(f"{el[0]}")
+    await message.answer("Для запису натисніть команду /create")
+    await state.finish()
 
 
 @dp.message_handler(commands=['create'])
@@ -80,12 +97,23 @@ async def process_firstname_add(message: types.Message, state: FSMContext):
 async def process_phone_add(message: types.Message, state: FSMContext):
     async with state.proxy() as data:
         data['phone'] = message.text
-    cursor.execute(f"UPDATE schedule SET LastName = ('{data['lastname']}') WHERE Time = '{data['date']}'")
-    cursor.execute(f"UPDATE schedule SET FirstName = ('{data['firstname']}') WHERE Time = '{data['date']}'")
-    cursor.execute(f"UPDATE schedule SET Phone = ('{data['phone']}') WHERE Time = '{data['date']}'")
-    db.commit()
-    await message.answer('Зареєстровано!')
-    await state.finish()
+    cursor.execute(f"SELECT Phone FROM schedule WHERE Time = '{data['date']}';")
+    phone = cursor.fetchall()
+    if phone == [(None,)]:
+        cursor.execute(f"UPDATE schedule SET LastName = ('{data['lastname']}') WHERE (Time = '{data['date']}') "
+                       f"AND (Phone IS NULL)")
+        cursor.execute(f"UPDATE schedule SET FirstName = ('{data['firstname']}') WHERE (Time = '{data['date']}') "
+                       f"AND (Phone IS NULL)")
+        cursor.execute(f"UPDATE schedule SET Phone = ('{data['phone']}') WHERE (Time = '{data['date']}') "
+                       f"AND (Phone IS NULL)")
+        db.commit()
+        await message.answer('Запис створено! '
+                             '\nДякуємо, за день до візиту ми зателефонуємо для підтвердження запису.')
+        await state.finish()
+    else:
+        await message.answer('Запис не створено!!! '
+                             '\nПеревірте правильність введення часу або зверніться до нас: /contacts')
+        await state.finish()
 
 
 @dp.message_handler()
